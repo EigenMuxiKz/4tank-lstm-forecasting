@@ -7,7 +7,13 @@ from plotly.subplots import make_subplots
 import joblib
 from tensorflow.keras.models import load_model
 import warnings
+import os
 warnings.filterwarnings('ignore')
+
+# Suppress TensorFlow warnings
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # Hide INFO and WARNING logs
+import tensorflow as tf
+tf.get_logger().setLevel('ERROR')
 
 # Set page configuration
 st.set_page_config(
@@ -58,8 +64,19 @@ st.sidebar.markdown("---")
 def load_trained_model():
     """Load the pre-trained LSTM model and associated components"""
     try:
-        # Load the Keras model
-        model = load_model('lstm_4tank_model.h5')
+        # Load the Keras model with custom objects to handle compatibility
+        import tensorflow as tf
+        
+        # Define custom objects for backward compatibility
+        custom_objects = {
+            'time_major': False  # Handle deprecated parameter
+        }
+        
+        # Try loading with compile=False to avoid optimizer issues
+        model = load_model('lstm_4tank_model.h5', compile=False)
+        
+        # Recompile the model with current TensorFlow version
+        model.compile(optimizer='adam', loss='mse', metrics=['mae'])
         
         # Load the scalers
         x_scaler = joblib.load('x_scaler.pkl')
@@ -71,7 +88,39 @@ def load_trained_model():
         return model, x_scaler, y_scaler, metadata, True
     except Exception as e:
         st.error(f"Error loading model: {str(e)}")
-        return None, None, None, None, False
+        # Try alternative loading method
+        try:
+            st.info("Trying alternative model loading...")
+            
+            # Load just the weights and rebuild architecture
+            from tensorflow.keras.models import Sequential
+            from tensorflow.keras.layers import LSTM, Dense, Dropout
+            
+            # Load metadata to get architecture info
+            metadata = joblib.load('model_metadata.pkl')
+            x_scaler = joblib.load('x_scaler.pkl')
+            y_scaler = joblib.load('y_scaler.pkl')
+            
+            # Rebuild model architecture
+            model = Sequential([
+                LSTM(64, return_sequences=True, input_shape=(metadata['window_size'], 2)),
+                Dropout(0.2),
+                LSTM(64, return_sequences=False),
+                Dropout(0.2),
+                Dense(4, activation='linear')
+            ])
+            
+            model.compile(optimizer='adam', loss='mse', metrics=['mae'])
+            
+            # Try to load weights
+            model.load_weights('lstm_4tank_model.h5')
+            
+            st.success("✅ Model loaded using alternative method!")
+            return model, x_scaler, y_scaler, metadata, True
+            
+        except Exception as e2:
+            st.error(f"Alternative loading also failed: {str(e2)}")
+            return None, None, None, None, False
 
 # Load training data
 @st.cache_data
