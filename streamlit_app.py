@@ -68,9 +68,9 @@ def load_trained_model():
         import tensorflow as tf
         
         # Define custom objects for backward compatibility
-        custom_objects = {
-            'time_major': False  # Handle deprecated parameter
-        }
+        #custom_objects = {
+            #'time_major': False  # Handle deprecated parameter
+        #}
         
         # Try loading with compile=False to avoid optimizer issues
         model = load_model('lstm_4tank_model.h5', compile=False)
